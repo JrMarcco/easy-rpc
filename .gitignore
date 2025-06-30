@@ -1,0 +1,17 @@
+*.iml
+*.log
+*.lock
+*.out
+*.sum
+
+**/tmp/
+**/data/
+**/log/
+**/logs/
+**/example/
+
+.idea
+.vscode
+
+
+**/.DS_Store
