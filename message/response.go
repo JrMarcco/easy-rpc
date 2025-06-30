@@ -7,25 +7,23 @@ import (
 // Resp rpc 响应信息
 //
 // | 	  head length 4  	| 	body length 4 	|
-// |      request id  4     |
+// |      message id  4     |
 // |  	  error message	    |
 // | 	  response body	    |
 type Resp struct {
 	HeadLen uint32
 	BodyLen uint32
-	ReqId   uint32
+
+	MessageId uint32
 
 	Err  []byte
 	Body []byte
-
-	Meta map[string]string
 }
 
-func (resp *Resp) setHeadLen() {
+func (resp *Resp) SetLength() {
+	// 设置 head 长度
 	resp.HeadLen = 12 + uint32(len(resp.Err))
-}
-
-func (resp *Resp) setBodyLen() {
+	// 设置 body 长度
 	resp.BodyLen = uint32(len(resp.Body))
 }
 
@@ -36,12 +34,11 @@ func EncodeResp(resp *Resp) []byte {
 	binary.BigEndian.PutUint32(bs[:4], resp.HeadLen)
 	// 写入 body 长度
 	binary.BigEndian.PutUint32(bs[4:8], resp.BodyLen)
-	// 写入 request id
-	binary.BigEndian.PutUint32(bs[8:12], resp.ReqId)
+	// 写入 message id
+	binary.BigEndian.PutUint32(bs[8:12], resp.MessageId)
 
 	// 写入 err
 	copy(bs[12:resp.HeadLen], resp.Err)
-
 	// 写入 body
 	copy(bs[resp.HeadLen:], resp.Body)
 
@@ -55,14 +52,14 @@ func DecodeResp(data []byte) *Resp {
 	resp.HeadLen = binary.BigEndian.Uint32(data[:4])
 	// 解码 body 长度
 	resp.BodyLen = binary.BigEndian.Uint32(data[4:8])
-	// 解码 request id
-	resp.ReqId = binary.BigEndian.Uint32(data[8:12])
+	// 解码 message id
+	resp.MessageId = binary.BigEndian.Uint32(data[8:12])
 
 	// 解码 err
-	curr := data[12:resp.HeadLen]
-	if len(curr) != 0 {
+	if resp.HeadLen > 12 {
 		resp.Err = data[12:resp.HeadLen]
 	}
+	// 解码 body
 	if resp.BodyLen > 0 {
 		resp.Body = data[resp.HeadLen : resp.HeadLen+resp.BodyLen]
 	}

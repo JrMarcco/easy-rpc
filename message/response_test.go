@@ -14,9 +14,9 @@ func TestResp(t *testing.T) {
 		{
 			name: "basic",
 			resp: &Resp{
-				HeadLen: 12,
-				BodyLen: 12,
-				ReqId:   1,
+				HeadLen:   12,
+				BodyLen:   12,
+				MessageId: 1,
 
 				Err:  []byte("test-err"),
 				Body: []byte("test-data"),
@@ -24,26 +24,25 @@ func TestResp(t *testing.T) {
 		}, {
 			name: "without err",
 			resp: &Resp{
-				HeadLen: 12,
-				BodyLen: 12,
-				ReqId:   1,
-				Body:    []byte("test-data"),
+				HeadLen:   12,
+				BodyLen:   12,
+				MessageId: 1,
+				Body:      []byte("test-data"),
 			},
 		}, {
 			name: "without body",
 			resp: &Resp{
-				HeadLen: 12,
-				BodyLen: 12,
-				ReqId:   1,
-				Err:     []byte("test-err"),
+				HeadLen:   12,
+				BodyLen:   12,
+				MessageId: 1,
+				Err:       []byte("test-err"),
 			},
 		},
 	}
 
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
-			tc.resp.setHeadLen()
-			tc.resp.setBodyLen()
+			tc.resp.SetLength()
 
 			data := EncodeResp(tc.resp)
 			decoded := DecodeResp(data)

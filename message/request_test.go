@@ -15,7 +15,7 @@ func TestReq(t *testing.T) {
 		{
 			name: "basic",
 			req: &Req{
-				ReqId: 1,
+				MessageId: 1,
 
 				Version:     1,
 				Serializer:  1,
@@ -35,7 +35,7 @@ func TestReq(t *testing.T) {
 		}, {
 			name: "without body",
 			req: &Req{
-				ReqId: 1,
+				MessageId: 1,
 
 				Version:     1,
 				Serializer:  1,
@@ -54,7 +54,7 @@ func TestReq(t *testing.T) {
 		}, {
 			name: "without meta",
 			req: &Req{
-				ReqId: 1,
+				MessageId: 1,
 
 				Version:     1,
 				Serializer:  1,
@@ -68,7 +68,7 @@ func TestReq(t *testing.T) {
 		}, {
 			name: "body with separator",
 			req: &Req{
-				ReqId: 1,
+				MessageId: 1,
 
 				Version:     1,
 				Serializer:  1,
@@ -90,8 +90,7 @@ func TestReq(t *testing.T) {
 
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
-			tc.req.setHeadLen()
-			tc.req.setBodyLen()
+			tc.req.SetLength()
 
 			data := EncodeReq(tc.req)
 			decoded := DecodeReq(data)

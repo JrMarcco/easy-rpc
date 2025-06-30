@@ -13,7 +13,7 @@ const (
 // Req rpc 请求信息
 //
 // | 	  head length 4  	| 					   	 body length 4           		      |
-// |      request id  4	    |  version 1 | compressor 1 |  serializer 1 | message type 1  |
+// |      message id  4	    |  version 1 | compressor 1 |  serializer 1 | message type 1  |
 // | 	  service name 		|
 // | 	  method name 		|
 // | 	  meta ...			|
@@ -25,7 +25,8 @@ const (
 type Req struct {
 	HeadLen uint32
 	BodyLen uint32
-	ReqId   uint32
+
+	MessageId uint32
 
 	Version     uint8
 	Compressor  uint8
@@ -39,7 +40,8 @@ type Req struct {
 	Meta map[string]string
 }
 
-func (req *Req) setHeadLen() {
+func (req *Req) SetLength() {
+	// 设置 Head 长度
 	// +2 是因为 service/method 之间共有 2 个分隔符
 	headLen := 16 + len(req.Service) + len(req.Method) + 2
 
@@ -49,11 +51,9 @@ func (req *Req) setHeadLen() {
 			headLen += len(k) + len(v) + 2
 		}
 	}
-
 	req.HeadLen = uint32(headLen)
-}
 
-func (req *Req) setBodyLen() {
+	// 设置 body 长度
 	req.BodyLen = uint32(len(req.Body))
 }
 
@@ -65,8 +65,8 @@ func EncodeReq(req *Req) []byte {
 	binary.BigEndian.PutUint32(bs[:4], req.HeadLen)
 	// 写入 body 长度
 	binary.BigEndian.PutUint32(bs[4:8], req.BodyLen)
-	// 写入 request id
-	binary.BigEndian.PutUint32(bs[8:12], req.ReqId)
+	// 写入 message id
+	binary.BigEndian.PutUint32(bs[8:12], req.MessageId)
 
 	// 写入 version
 	bs[12] = req.Version
@@ -117,8 +117,8 @@ func DecodeReq(data []byte) *Req {
 	req.HeadLen = binary.BigEndian.Uint32(data[:4])
 	// 解码 body 长度
 	req.BodyLen = binary.BigEndian.Uint32(data[4:8])
-	// 解码 request id
-	req.ReqId = binary.BigEndian.Uint32(data[8:12])
+	// 解码 message id
+	req.MessageId = binary.BigEndian.Uint32(data[8:12])
 
 	// 解码 version
 	req.Version = data[12]
