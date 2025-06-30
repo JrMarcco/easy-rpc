@@ -15,7 +15,8 @@ func TestReq(t *testing.T) {
 		{
 			name: "basic",
 			req: &Req{
-				ReqId:       1,
+				ReqId: 1,
+
 				Version:     1,
 				Serializer:  1,
 				Compressor:  1,
@@ -34,7 +35,8 @@ func TestReq(t *testing.T) {
 		}, {
 			name: "without body",
 			req: &Req{
-				ReqId:       1,
+				ReqId: 1,
+
 				Version:     1,
 				Serializer:  1,
 				Compressor:  1,
@@ -52,7 +54,8 @@ func TestReq(t *testing.T) {
 		}, {
 			name: "without meta",
 			req: &Req{
-				ReqId:       1,
+				ReqId: 1,
+
 				Version:     1,
 				Serializer:  1,
 				Compressor:  1,
@@ -65,7 +68,8 @@ func TestReq(t *testing.T) {
 		}, {
 			name: "body with separator",
 			req: &Req{
-				ReqId:       1,
+				ReqId: 1,
+
 				Version:     1,
 				Serializer:  1,
 				Compressor:  1,
