@@ -55,7 +55,7 @@ func (s *Server) handleConn(conn net.Conn) {
 		}
 
 		req := message.DecodeReq(reqBs)
-		ctx := s.buildContext(req.Meta)
+		ctx := s.rebuildContext(req.Meta)
 
 		resp, err := s.Call(ctx, req)
 		if req.Meta[metaKeyOneway] == "true" {
@@ -76,7 +76,7 @@ func (s *Server) handleConn(conn net.Conn) {
 	}
 }
 
-func (s *Server) buildContext(meta map[string]string) context.Context {
+func (s *Server) rebuildContext(meta map[string]string) context.Context {
 	ctx := context.Background()
 	if meta[metaKeyOneway] == "true" {
 		ctx = ContextWithOneway(ctx)

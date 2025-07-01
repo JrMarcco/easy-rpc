@@ -21,7 +21,29 @@ type Client struct {
 	serializer serialize.Serializer
 }
 
-func (c *Client) Call(ctx context.Context, req *message.Req) (*message.Resp, error) {
+func (c *Client) Call(ctx context.Context, req *message.Req) (resp *message.Resp, err error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	ch := make(chan struct{})
+	defer close(ch)
+
+	go func() {
+		resp, err = c.sendRequest(ctx, req)
+		ch <- struct{}{}
+	}()
+
+	select {
+	// 监听超时
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-ch:
+		return resp, err
+	}
+}
+
+func (c *Client) sendRequest(ctx context.Context, req *message.Req) (*message.Resp, error) {
 	val, err := c.connPool.Get()
 	if err != nil {
 		return nil, fmt.Errorf("[easy-rpc] failed to get connection: %w", err)
