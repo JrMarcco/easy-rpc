@@ -55,11 +55,20 @@ func (s *Server) handleConn(conn net.Conn) {
 		}
 
 		req := message.DecodeReq(reqBs)
-		resp, err := s.Call(context.Background(), req)
+		ctx := s.buildContext(req.Meta)
+
+		resp, err := s.Call(ctx, req)
+		if req.Meta[metaKeyOneway] == "true" {
+			continue
+		}
 		if err != nil {
-			resp.Err = []byte(err.Error())
+			resp = &message.Resp{
+				MessageId: req.MessageId,
+				Err:       []byte(err.Error()),
+			}
 		}
 
+		resp.SetLength()
 		_, err = conn.Write(message.EncodeResp(resp))
 		if err != nil {
 			return
@@ -67,14 +76,25 @@ func (s *Server) handleConn(conn net.Conn) {
 	}
 }
 
-func (s *Server) Call(ctx context.Context, req *message.Req) (*message.Resp, error) {
-	resp := &message.Resp{
-		MessageId: req.MessageId,
+func (s *Server) buildContext(meta map[string]string) context.Context {
+	ctx := context.Background()
+	if meta[metaKeyOneway] == "true" {
+		ctx = ContextWithOneway(ctx)
 	}
+	return ctx
+}
 
+func (s *Server) Call(ctx context.Context, req *message.Req) (*message.Resp, error) {
 	ps, ok := s.services[req.Service]
 	if !ok {
-		return resp, fmt.Errorf("[easy-rpc] service %s not found", req.Service)
+		return nil, fmt.Errorf("[easy-rpc] service %s not found", req.Service)
+	}
+
+	if isOneway(ctx) {
+		go func() {
+			_, _ = ps.Call(ctx, req)
+		}()
+		return nil, nil
 	}
 
 	return ps.Call(ctx, req)
@@ -98,15 +118,10 @@ type ProxyStub struct {
 }
 
 func (p *ProxyStub) Call(ctx context.Context, req *message.Req) (*message.Resp, error) {
-	resp := &message.Resp{
-		MessageId: req.MessageId,
-	}
-	defer resp.SetLength()
-
 	// 获取 serializer
 	serializer, ok := p.serializers[req.Serializer]
 	if !ok {
-		return resp, fmt.Errorf("[easy-rpc] unsupported serializer of code %c", req.Serializer)
+		return nil, fmt.Errorf("[easy-rpc] unsupported serializer of code %c", req.Serializer)
 	}
 
 	// 获取调用方法
@@ -117,19 +132,22 @@ func (p *ProxyStub) Call(ctx context.Context, req *message.Req) (*message.Resp, 
 
 	err := serializer.Unmarshal(req.Body, in.Interface())
 	if err != nil {
-		return resp, err
+		return nil, err
 	}
 
 	// 实际方法调用
 	out := method.Call([]reflect.Value{reflect.ValueOf(ctx), in})
+	if len(out) > 1 && !out[1].IsZero() {
+		return nil, out[1].Interface().(error)
+	}
+
 	respBody, err := serializer.Marshal(out[0].Interface())
 	if err != nil {
-		return resp, err
+		return nil, err
 	}
-	resp.Body = respBody
 
-	if len(out) > 1 && !out[1].IsZero() {
-		resp.Err = []byte(out[1].Interface().(error).Error())
-	}
-	return resp, nil
+	return &message.Resp{
+		MessageId: req.MessageId,
+		Body:      respBody,
+	}, nil
 }

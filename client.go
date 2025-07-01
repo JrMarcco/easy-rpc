@@ -21,7 +21,7 @@ type Client struct {
 	serializer serialize.Serializer
 }
 
-func (c *Client) Call(_ context.Context, req *message.Req) (*message.Resp, error) {
+func (c *Client) Call(ctx context.Context, req *message.Req) (*message.Resp, error) {
 	val, err := c.connPool.Get()
 	if err != nil {
 		return nil, fmt.Errorf("[easy-rpc] failed to get connection: %w", err)
@@ -35,6 +35,13 @@ func (c *Client) Call(_ context.Context, req *message.Req) (*message.Resp, error
 	_, err = conn.Write(message.EncodeReq(req))
 	if err != nil {
 		return nil, err
+	}
+
+	// 如果是 oneway 调用，这里可以直接返回
+	if isOneway(ctx) {
+		return &message.Resp{
+			MessageId: req.MessageId,
+		}, nil
 	}
 
 	respBs, err := ReadMsg(conn)
@@ -70,16 +77,23 @@ func (c *Client) setProxyFunc(service Service) {
 					return []reflect.Value{reflect.ValueOf(out), reflect.ValueOf(err)}
 				}
 
+				var meta map[string]string
+				// args[0] = context.Context
+				ctx := args[0].Interface().(context.Context)
+				if isOneway(ctx) {
+					meta = map[string]string{metaKeyOneway: "true"}
+				}
+
 				req := &message.Req{
 					Serializer: c.serializer.Code(),
 					Service:    service.Name(),
 					Method:     fd.Name,
 					Body:       reqBody,
+					Meta:       meta,
 				}
 				req.SetLength()
 
-				// args[0] = context.Context
-				resp, err := c.Call(args[0].Interface().(context.Context), req)
+				resp, err := c.Call(ctx, req)
 				if err != nil {
 					return []reflect.Value{reflect.ValueOf(out), reflect.ValueOf(err)}
 				}
@@ -130,12 +144,8 @@ func (cb *ClientBuilder) Build() (*Client, error) {
 			MaxCap:      64,
 			MaxIdle:     16,
 			IdleTimeout: time.Minute,
-			Factory: func() (any, error) {
-				return net.Dial("tcp", cb.addr)
-			},
-			Close: func(i any) error {
-				return i.(net.Conn).Close()
-			},
+			Factory:     func() (any, error) { return net.Dial("tcp", cb.addr) },
+			Close:       func(val any) error { return val.(net.Conn).Close() },
 		})
 		if err != nil {
 			return nil, fmt.Errorf("[easy-rpc] failed to create connection pool: %w", err)

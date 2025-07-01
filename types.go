@@ -8,6 +8,10 @@ import (
 
 //go:generate mockgen -source=./types.go -destination=./mock/proxy.mock.go -package=proxymock -typed Proxy
 
+const (
+	metaKeyOneway = "oneway"
+)
+
 type Service interface {
 	Name() string
 }
