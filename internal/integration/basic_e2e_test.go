@@ -9,6 +9,8 @@ import (
 	"time"
 
 	easyrpc "github.com/JrMarcco/easy-rpc"
+	"github.com/JrMarcco/easy-rpc/internal/integration/pb"
+	"github.com/JrMarcco/easy-rpc/serialize/proto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,7 +25,8 @@ type testResp struct {
 var _ easyrpc.Service = (*testClientService)(nil)
 
 type testClientService struct {
-	SayHello func(ctx context.Context, req *testReq) (*testResp, error)
+	SayHello      func(ctx context.Context, req *testReq) (*testResp, error)
+	SayHelloProto func(ctx context.Context, req *pb.TestReq) (*pb.TestResp, error)
 }
 
 func (cs *testClientService) Name() string {
@@ -45,24 +48,54 @@ func (ss *testServerService) SayHello(_ context.Context, req *testReq) (*testRes
 	}, nil
 }
 
+func (ss *testServerService) SayHelloProto(_ context.Context, req *pb.TestReq) (*pb.TestResp, error) {
+	return &pb.TestResp{
+		Msg: fmt.Sprintf("hello %s", req.Name),
+	}, nil
+}
+
 func TestBasicRemoteCall(t *testing.T) {
 	svr := easyrpc.NewServer()
-	ss := &testServerService{}
-	svr.Register(ss)
+	svr.RegisterService(&testServerService{})
 
 	go func() {
 		err := svr.Start(":8081")
 		require.NoError(t, err)
 	}()
-	time.Sleep(time.Second)
+	time.Sleep(100 * time.Millisecond)
 
 	cs := &testClientService{}
-	client, err := easyrpc.NewClient(":8081", 4, 16, 8, time.Second)
+	client, err := easyrpc.NewClientBuilder(":8081").Build()
 	require.NoError(t, err)
 
 	client.InitService(cs)
 
 	resp, err := cs.SayHello(context.Background(), &testReq{Name: "jrmarcco"})
+	require.NoError(t, err)
+	require.Equal(t, "hello jrmarcco", resp.Msg)
+}
+
+func TestBasicRemoteCallProto(t *testing.T) {
+	svr := easyrpc.NewServer()
+	svr.RegisterService(&testServerService{})
+
+	go func() {
+		err := svr.Start(":8081")
+		require.NoError(t, err)
+	}()
+	time.Sleep(100 * time.Millisecond)
+
+	cs := &testClientService{}
+	client, err := easyrpc.NewClientBuilder(":8081").
+		Serializer(&proto.Serializer{}).
+		Build()
+	require.NoError(t, err)
+
+	client.InitService(cs)
+
+	resp, err := cs.SayHelloProto(context.Background(), &pb.TestReq{
+		Name: "jrmarcco",
+	})
 	require.NoError(t, err)
 	require.Equal(t, "hello jrmarcco", resp.Msg)
 }

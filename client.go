@@ -2,7 +2,6 @@ package easyrpc
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -10,19 +9,22 @@ import (
 	"time"
 
 	"github.com/JrMarcco/easy-rpc/message"
+	"github.com/JrMarcco/easy-rpc/serialize"
+	"github.com/JrMarcco/easy-rpc/serialize/json"
 	"github.com/silenceper/pool"
 )
 
 var _ Proxy = (*Client)(nil)
 
 type Client struct {
-	connPool pool.Pool
+	connPool   pool.Pool
+	serializer serialize.Serializer
 }
 
 func (c *Client) Call(_ context.Context, req *message.Req) (*message.Resp, error) {
 	val, err := c.connPool.Get()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
+		return nil, fmt.Errorf("[easy-rpc] failed to get connection: %w", err)
 	}
 	defer func() {
 		_ = c.connPool.Put(val)
@@ -37,7 +39,7 @@ func (c *Client) Call(_ context.Context, req *message.Req) (*message.Resp, error
 
 	respBs, err := ReadMsg(conn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+		return nil, fmt.Errorf("[easy-rpc] failed to read response: %w", err)
 	}
 	return message.DecodeResp(respBs), nil
 }
@@ -63,15 +65,16 @@ func (c *Client) setProxyFunc(service Service) {
 				// resp
 				out := reflect.New(fd.Type.Out(0).Elem()).Interface()
 
-				reqBody, err := json.Marshal(in)
+				reqBody, err := c.serializer.Marshal(in)
 				if err != nil {
 					return []reflect.Value{reflect.ValueOf(out), reflect.ValueOf(err)}
 				}
 
 				req := &message.Req{
-					Service: service.Name(),
-					Method:  fd.Name,
-					Body:    reqBody,
+					Serializer: c.serializer.Code(),
+					Service:    service.Name(),
+					Method:     fd.Name,
+					Body:       reqBody,
 				}
 				req.SetLength()
 
@@ -91,7 +94,7 @@ func (c *Client) setProxyFunc(service Service) {
 				}
 
 				if resp.BodyLen > 0 {
-					err = json.Unmarshal(resp.Body, out)
+					err = c.serializer.Unmarshal(resp.Body, out)
 					if err != nil {
 						return []reflect.Value{reflect.ValueOf(out), reflect.ValueOf(err)}
 					}
@@ -104,21 +107,51 @@ func (c *Client) setProxyFunc(service Service) {
 	}
 }
 
-func NewClient(addr string, initCap int, MaxCap int, MaxIdle int, idleTimeout time.Duration) (*Client, error) {
-	connPool, err := pool.NewChannelPool(&pool.Config{
-		InitialCap:  initCap,
-		MaxCap:      MaxCap,
-		MaxIdle:     MaxIdle,
-		IdleTimeout: idleTimeout,
-		Factory: func() (any, error) {
-			return net.Dial("tcp", addr)
-		},
-		Close: func(i any) error {
-			return i.(net.Conn).Close()
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create connection pool: %w", err)
+type ClientBuilder struct {
+	addr       string
+	connPool   pool.Pool
+	serializer serialize.Serializer
+}
+
+func (cb *ClientBuilder) ConnPool(pool pool.Pool) *ClientBuilder {
+	cb.connPool = pool
+	return cb
+}
+
+func (cb *ClientBuilder) Serializer(serializer serialize.Serializer) *ClientBuilder {
+	cb.serializer = serializer
+	return cb
+}
+
+func (cb *ClientBuilder) Build() (*Client, error) {
+	if cb.connPool == nil {
+		connPool, err := pool.NewChannelPool(&pool.Config{
+			InitialCap:  8,
+			MaxCap:      64,
+			MaxIdle:     16,
+			IdleTimeout: time.Minute,
+			Factory: func() (any, error) {
+				return net.Dial("tcp", cb.addr)
+			},
+			Close: func(i any) error {
+				return i.(net.Conn).Close()
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("[easy-rpc] failed to create connection pool: %w", err)
+		}
+		cb.connPool = connPool
 	}
-	return &Client{connPool: connPool}, nil
+
+	return &Client{
+		connPool:   cb.connPool,
+		serializer: cb.serializer,
+	}, nil
+}
+
+func NewClientBuilder(addr string) *ClientBuilder {
+	return &ClientBuilder{
+		addr:       addr,
+		serializer: &json.Serializer{},
+	}
 }

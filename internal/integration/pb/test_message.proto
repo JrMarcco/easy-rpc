@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "github.com/JrMarcco/easy-rpc/internal/integration/proto";
+
+message TestReq {
+    string name = 1;
+}
+
+message TestResp {
+    string msg = 1;
+}

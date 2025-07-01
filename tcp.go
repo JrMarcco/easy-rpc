@@ -12,7 +12,7 @@ func ReadMsg(conn net.Conn) (bs []byte, err error) {
 	lenBs := make([]byte, lenBytes)
 	_, err = conn.Read(lenBs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read length: %w", err)
+		return nil, fmt.Errorf("[easy-rpc] failed to read length: %w", err)
 	}
 
 	// 读取长度字段
@@ -23,7 +23,7 @@ func ReadMsg(conn net.Conn) (bs []byte, err error) {
 	bs = make([]byte, length)
 	_, err = conn.Read(bs[8:])
 	if err != nil {
-		return nil, fmt.Errorf("failed to read message: %w", err)
+		return nil, fmt.Errorf("[easy-rpc] failed to read message: %w", err)
 	}
 	copy(bs[:8], lenBs)
 	return bs, nil
