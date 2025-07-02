@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"strconv"
 	"time"
 
+	"github.com/JrMarcco/easy-rpc/compress"
 	"github.com/JrMarcco/easy-rpc/message"
 	"github.com/JrMarcco/easy-rpc/serialize"
 	"github.com/JrMarcco/easy-rpc/serialize/json"
@@ -18,6 +20,7 @@ var _ Proxy = (*Client)(nil)
 
 type Client struct {
 	connPool   pool.Pool
+	compressor compress.Compressor
 	serializer serialize.Serializer
 }
 
@@ -99,19 +102,22 @@ func (c *Client) setProxyFunc(service Service) {
 					return []reflect.Value{reflect.ValueOf(out), reflect.ValueOf(err)}
 				}
 
-				var meta map[string]string
-				// args[0] = context.Context
-				ctx := args[0].Interface().(context.Context)
-				if isOneway(ctx) {
-					meta = map[string]string{metaKeyOneway: "true"}
+				// 压缩 request body
+				compressedBody, err := c.compressor.Compress(reqBody)
+				if err != nil {
+					return []reflect.Value{reflect.ValueOf(out), reflect.ValueOf(err)}
 				}
 
+				// args[0] = context.Context
+				ctx := args[0].Interface().(context.Context)
+
 				req := &message.Req{
+					Compressor: c.compressor.Code(),
 					Serializer: c.serializer.Code(),
 					Service:    service.Name(),
 					Method:     fd.Name,
-					Body:       reqBody,
-					Meta:       meta,
+					Body:       compressedBody,
+					Meta:       c.metaFromContext(ctx),
 				}
 				req.SetLength()
 
@@ -143,14 +149,33 @@ func (c *Client) setProxyFunc(service Service) {
 	}
 }
 
+// metaFromContext 通过 context 构建 meta 数据。
+func (c *Client) metaFromContext(ctx context.Context) map[string]string {
+	meta := make(map[string]string, 2)
+	if dl, ok := ctx.Deadline(); ok {
+		// 设置了超时时间
+		meta[metaKeyDeadline] = strconv.FormatInt(dl.UnixMilli(), 10)
+	}
+	if isOneway(ctx) {
+		meta[metaKeyOneway] = "true"
+	}
+	return meta
+}
+
 type ClientBuilder struct {
 	addr       string
 	connPool   pool.Pool
+	compressor compress.Compressor
 	serializer serialize.Serializer
 }
 
 func (cb *ClientBuilder) ConnPool(pool pool.Pool) *ClientBuilder {
 	cb.connPool = pool
+	return cb
+}
+
+func (cb *ClientBuilder) Compressor(compressor compress.Compressor) *ClientBuilder {
+	cb.compressor = compressor
 	return cb
 }
 
@@ -177,6 +202,7 @@ func (cb *ClientBuilder) Build() (*Client, error) {
 
 	return &Client{
 		connPool:   cb.connPool,
+		compressor: cb.compressor,
 		serializer: cb.serializer,
 	}, nil
 }
@@ -184,6 +210,7 @@ func (cb *ClientBuilder) Build() (*Client, error) {
 func NewClientBuilder(addr string) *ClientBuilder {
 	return &ClientBuilder{
 		addr:       addr,
+		compressor: &compress.DoNothing{},
 		serializer: &json.Serializer{},
 	}
 }

@@ -1,7 +1,7 @@
 package json
 
 import (
-	sdkjson "encoding/json"
+	"encoding/json"
 
 	"github.com/JrMarcco/easy-rpc/serialize"
 )
@@ -15,9 +15,9 @@ func (s *Serializer) Code() uint8 {
 }
 
 func (s *Serializer) Marshal(val any) ([]byte, error) {
-	return sdkjson.Marshal(val)
+	return json.Marshal(val)
 }
 
 func (s *Serializer) Unmarshal(data []byte, val any) error {
-	return sdkjson.Unmarshal(data, val)
+	return json.Unmarshal(data, val)
 }
