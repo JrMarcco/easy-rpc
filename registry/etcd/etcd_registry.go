@@ -3,6 +3,7 @@ package etcd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -23,6 +24,8 @@ type Registry struct {
 	mu          sync.Mutex
 	etcdClient  *clientv3.Client
 	etcdSession *concurrency.Session
+
+	leaseTTL int // 租约 ttl
 
 	watchCancel []context.CancelFunc
 }
@@ -110,13 +113,51 @@ func (r *Registry) instanceKey(instance registry.ServiceInstance) string {
 	return fmt.Sprintf("/easyrpc/%s/%s", instance.Name, instance.Addr)
 }
 
-func NewRegistry(client *clientv3.Client) (*Registry, error) {
-	session, err := concurrency.NewSession(client)
+type RegistryBuilder struct {
+	etcdClient *clientv3.Client
+
+	// 租约 ttl，默认 30s
+	//
+	// | cluster scale | recommended lease TTL (seconds) |
+	// |    < 50       |            30                   |
+	// |    50 ~ 200   |            15                   |
+	// |    > 200      |            10                   |
+	//
+	// 集群规模越大续约越频繁的原因是：
+	// 1、服务变更感知时效性要求更高。
+	// 2、减少“僵尸”服务的影响。
+	// 3、防止单点故障影响扩大。
+	// 4、更快的健康检查与剔除。
+	// 5、分摊注册中心压力。
+	//		虽然续约频繁会增加 etcd 的 QPS，但大集群本身对注册中心的压力主要来自服务变更和查询。
+	//		但是通过合理缩短 TTL 和加快续约，可以让 etcd 更及时地维护服务列表，避免因“过期”服务过多导致的查询不准确。
+	leaseTTL int
+}
+
+// LeaseTTL 设置租约 ttl，单位为秒。
+func (rb *RegistryBuilder) LeaseTTL(ttl int) *RegistryBuilder {
+	rb.leaseTTL = ttl
+	return rb
+}
+
+func (rb *RegistryBuilder) Build() (*Registry, error) {
+	if rb.leaseTTL <= 0 {
+		return nil, errors.New("[jotify] etcd lease TTL must be greater than 0")
+	}
+
+	session, err := concurrency.NewSession(rb.etcdClient, concurrency.WithTTL(rb.leaseTTL))
 	if err != nil {
 		return nil, err
 	}
 	return &Registry{
-		etcdClient:  client,
+		etcdClient:  rb.etcdClient,
 		etcdSession: session,
 	}, nil
+}
+
+func NewRegistryBuilder(client *clientv3.Client) *RegistryBuilder {
+	return &RegistryBuilder{
+		etcdClient: client,
+		leaseTTL:   30,
+	}
 }
